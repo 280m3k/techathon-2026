@@ -5,6 +5,7 @@ import com.example.esp32test.data.model.Esp32Settings
 import com.example.esp32test.data.model.HttpMethod
 import com.example.esp32test.data.model.NfcStatus
 import com.example.esp32test.data.model.NfcTagData
+import com.example.esp32test.data.model.NordicRune
 import com.example.esp32test.data.model.TransportMode
 import com.example.esp32test.data.model.TransmissionLog
 import com.example.esp32test.data.model.TransmissionState
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -230,6 +232,168 @@ class MainViewModelTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(NfcStatus.ENABLED, viewModel.uiState.value.nfcStatus)
+    }
+
+    @Test
+    fun testScannedTagBatchingSingleScanTimeout() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val tag = NfcTagData(tagUid = "04:11:22:33", payloadText = "100")
+        viewModel.onTagScanned(tagData = tag)
+
+        assertEquals(listOf(100), viewModel.uiState.value.currentScanArray)
+        assertTrue(viewModel.uiState.value.savedScanArrays.isEmpty())
+
+        testScheduler.advanceTimeBy(5001L)
+
+        assertTrue(viewModel.uiState.value.currentScanArray.isEmpty())
+        assertEquals(listOf(listOf(100)), viewModel.uiState.value.savedScanArrays)
+    }
+
+    @Test
+    fun testScannedTagBatchingMultipleScansWithinOneSecond() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val tag1 = NfcTagData(tagUid = "04:11:22:33", payloadText = "10")
+        val tag2 = NfcTagData(tagUid = "04:11:22:34", payloadText = "20")
+        val tag3 = NfcTagData(tagUid = "04:11:22:35", payloadText = "30")
+
+        viewModel.onTagScanned(tagData = tag1)
+        testScheduler.advanceTimeBy(400L)
+
+        viewModel.onTagScanned(tagData = tag2)
+        testScheduler.advanceTimeBy(400L)
+
+        viewModel.onTagScanned(tagData = tag3)
+
+        assertEquals(listOf(10, 20, 30), viewModel.uiState.value.currentScanArray)
+        assertTrue(viewModel.uiState.value.savedScanArrays.isEmpty())
+
+        testScheduler.advanceTimeBy(5001L)
+
+        assertTrue(viewModel.uiState.value.currentScanArray.isEmpty())
+        assertEquals(listOf(listOf(10, 20, 30)), viewModel.uiState.value.savedScanArrays)
+    }
+
+    @Test
+    fun testScannedTagBatchingScansWithGapGreaterThanOneSecond() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val tag1 = NfcTagData(tagUid = "04:11:22:33", payloadText = "100")
+        val tag2 = NfcTagData(tagUid = "04:11:22:34", payloadText = "200")
+        val tag3 = NfcTagData(tagUid = "04:11:22:35", payloadText = "300")
+
+        viewModel.onTagScanned(tagData = tag1)
+        testScheduler.advanceTimeBy(500L)
+        viewModel.onTagScanned(tagData = tag2)
+
+        testScheduler.advanceTimeBy(5500L)
+        assertEquals(listOf(listOf(100, 200)), viewModel.uiState.value.savedScanArrays)
+        assertTrue(viewModel.uiState.value.currentScanArray.isEmpty())
+
+        viewModel.onTagScanned(tagData = tag3)
+        assertEquals(listOf(300), viewModel.uiState.value.currentScanArray)
+
+        testScheduler.advanceTimeBy(5500L)
+
+        assertTrue(viewModel.uiState.value.currentScanArray.isEmpty())
+        assertEquals(listOf(listOf(100, 200), listOf(300)), viewModel.uiState.value.savedScanArrays)
+    }
+
+    @Test
+    fun testClearScanArrays() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val tag = NfcTagData(tagUid = "04:11:22:33", payloadText = "500")
+        viewModel.onTagScanned(tagData = tag)
+        testScheduler.advanceTimeBy(5500L)
+
+        assertEquals(1, viewModel.uiState.value.savedScanArrays.size)
+
+        viewModel.clearScanArrays()
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.currentScanArray.isEmpty())
+        assertTrue(viewModel.uiState.value.savedScanArrays.isEmpty())
+        assertNull(viewModel.uiState.value.detectedRune)
+    }
+
+    @Test
+    fun testRuneDetectionOthala() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val pattern = listOf(11, 5, 2, 4, 13)
+        pattern.forEach { num ->
+            viewModel.onTagScanned(tagData = NfcTagData(tagUid = "04:11", payloadText = num.toString()))
+            testScheduler.advanceTimeBy(200L)
+        }
+
+        assertEquals(pattern, viewModel.uiState.value.currentScanArray)
+
+        testScheduler.advanceTimeBy(5001L)
+
+        assertEquals(NordicRune.OTHALA, viewModel.uiState.value.detectedRune)
+        assertEquals("ᛟ", viewModel.uiState.value.detectedRune?.symbol)
+        assertEquals("Othala", viewModel.uiState.value.detectedRune?.runeName)
+    }
+
+    @Test
+    fun testRuneDetectionEhwaz() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val pattern = listOf(11, 6, 1, 7, 3, 8, 13)
+        pattern.forEach { num ->
+            viewModel.onTagScanned(tagData = NfcTagData(tagUid = "04:22", payloadText = num.toString()))
+            testScheduler.advanceTimeBy(200L)
+        }
+
+        assertEquals(pattern, viewModel.uiState.value.currentScanArray)
+
+        testScheduler.advanceTimeBy(5001L)
+
+        assertEquals(NordicRune.EHWAZ, viewModel.uiState.value.detectedRune)
+        assertEquals("ᛖ", viewModel.uiState.value.detectedRune?.symbol)
+        assertEquals("Ehwaz", viewModel.uiState.value.detectedRune?.runeName)
+    }
+
+    @Test
+    fun testUnrecognizedPatternNoRune() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val pattern = listOf(1, 2, 3)
+        pattern.forEach { num ->
+            viewModel.onTagScanned(tagData = NfcTagData(tagUid = "04:33", payloadText = num.toString()))
+        }
+
+        testScheduler.advanceTimeBy(5001L)
+
+        assertNull(viewModel.uiState.value.detectedRune)
+    }
+
+    @Test
+    fun testDismissRune() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+        val pattern = listOf(11, 5, 2, 4, 13)
+        pattern.forEach { num ->
+            viewModel.onTagScanned(tagData = NfcTagData(tagUid = "04:11", payloadText = num.toString()))
+        }
+        testScheduler.advanceTimeBy(5001L)
+
+        assertEquals(NordicRune.OTHALA, viewModel.uiState.value.detectedRune)
+
+        viewModel.dismissRune()
+        testScheduler.advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.detectedRune)
     }
 
     private class FakeEsp32Repository : Esp32Repository {

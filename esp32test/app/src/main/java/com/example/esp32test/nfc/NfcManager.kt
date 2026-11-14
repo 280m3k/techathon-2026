@@ -78,6 +78,25 @@ object NfcManager {
     }
 
     /**
+     * Extracts an integer value from a text string.
+     * Parses direct integer strings, hex strings starting with "0x", or the primary embedded integer.
+     * Fallbacks to the string's hash code or 0 if no integer representation is found.
+     */
+    fun extractIntegerFromText(text: String): Int {
+        if (text.isBlank()) return 0
+        val trimmed = text.trim()
+        trimmed.toIntOrNull()?.let { return it }
+        if (trimmed.startsWith("0x", ignoreCase = true)) {
+            trimmed.drop(2).toIntOrNull(16)?.let { return it }
+        }
+        val numbers = Regex("""-?\d+""").findAll(trimmed).mapNotNull { it.value.toIntOrNull() }.toList()
+        if (numbers.isNotEmpty()) {
+            return numbers.last()
+        }
+        return text.hashCode()
+    }
+
+    /**
      * Converts a byte array (e.g. Tag UID) into a formatted hexadecimal string.
      *
      * @param bytes Byte array to format.

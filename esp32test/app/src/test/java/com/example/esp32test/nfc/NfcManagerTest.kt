@@ -165,4 +165,14 @@ class NfcManagerTest {
         assertEquals(200, log.responseCode)
         assertEquals("OK", log.responseMessage)
     }
+
+    @Test
+    fun testExtractIntegerFromText() {
+        assertEquals(42, NfcManager.extractIntegerFromText("42"))
+        assertEquals(-99, NfcManager.extractIntegerFromText("-99"))
+        assertEquals(26, NfcManager.extractIntegerFromText("0x1A"))
+        assertEquals(123, NfcManager.extractIntegerFromText("ESP32 Tag #123"))
+        assertEquals(0, NfcManager.extractIntegerFromText(""))
+        assertEquals("nonumeric".hashCode(), NfcManager.extractIntegerFromText("nonumeric"))
+    }
 }

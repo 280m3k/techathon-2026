@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.esp32test.data.model.HttpMethod
 import com.example.esp32test.data.model.NfcStatus
 import com.example.esp32test.data.model.NfcTagData
+import com.example.esp32test.data.model.NordicRune
 import com.example.esp32test.data.model.TransportMode
 import com.example.esp32test.data.repository.Esp32Repository
 import com.example.esp32test.data.repository.Esp32RepositoryImpl
 import com.example.esp32test.nfc.NfcManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -106,14 +108,75 @@ class MainViewModel(
         }
     }
 
+    private var batchTimerJob: Job? = null
+
     fun disconnectBle() {
         _uiState.update { it.copy(isBleConnected = false, isBleScanning = false) }
     }
 
     fun onTagScanned(context: Context? = null, tagData: NfcTagData) {
-        _uiState.update { it.copy(currentTag = tagData) }
+        val parsedInt = NfcManager.extractIntegerFromText(tagData.payloadText)
+
+        batchTimerJob?.cancel()
+
+        _uiState.update { state ->
+            state.copy(
+                currentTag = tagData,
+                currentScanArray = state.currentScanArray + parsedInt
+            )
+        }
+
+        batchTimerJob = viewModelScope.launch {
+            delay(5000L)
+            _uiState.update { state ->
+                if (state.currentScanArray.isNotEmpty()) {
+                    val completedArray = state.currentScanArray
+                    val matchedRune = NordicRune.matchPattern(completedArray)
+                    state.copy(
+                        savedScanArrays = state.savedScanArrays + listOf(completedArray),
+                        currentScanArray = emptyList(),
+                        detectedRune = matchedRune ?: state.detectedRune
+                    )
+                } else {
+                    state
+                }
+            }
+        }
+
         if (_uiState.value.settings.autoTransmit) {
             transmitTagData(context, tagData)
+        }
+    }
+
+    fun dismissRune() {
+        _uiState.update { it.copy(detectedRune = null) }
+    }
+
+    fun clearScanArrays() {
+        batchTimerJob?.cancel()
+        _uiState.update { state ->
+            state.copy(
+                currentScanArray = emptyList(),
+                savedScanArrays = emptyList(),
+                detectedRune = null
+            )
+        }
+    }
+
+    fun simulateRuneScan(rune: NordicRune, context: Context? = null) {
+        viewModelScope.launch {
+            rune.pattern.forEachIndexed { index, number ->
+                val mockTagData = NfcTagData(
+                    tagUid = "04:RU:NE:%02X".format(number),
+                    payloadText = number.toString(),
+                    records = listOf("Rune Record #$number"),
+                    techList = listOf("NfcA", "Ndef")
+                )
+                onTagScanned(context, mockTagData)
+                if (index < rune.pattern.size - 1) {
+                    delay(200L)
+                }
+            }
         }
     }
 

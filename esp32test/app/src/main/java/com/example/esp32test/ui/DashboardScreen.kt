@@ -29,13 +29,16 @@ import com.example.esp32test.data.model.Esp32Settings
 import com.example.esp32test.data.model.HttpMethod
 import com.example.esp32test.data.model.NfcStatus
 import com.example.esp32test.data.model.NfcTagData
+import com.example.esp32test.data.model.NordicRune
 import com.example.esp32test.data.model.TransportMode
 import com.example.esp32test.data.model.TransmissionLog
 import com.example.esp32test.data.model.TransmissionState
 import com.example.esp32test.data.model.TransmissionStatus
+import com.example.esp32test.ui.components.DetectedRuneCard
 import com.example.esp32test.ui.components.Esp32SettingsCard
 import com.example.esp32test.ui.components.LastScannedTagCard
 import com.example.esp32test.ui.components.NfcStatusCard
+import com.example.esp32test.ui.components.ScannedIntegerArraysCard
 import com.example.esp32test.ui.components.TransmissionHistoryCard
 import com.example.esp32test.ui.components.TransmissionStatusBanner
 import com.example.esp32test.ui.theme.Esp32testTheme
@@ -60,7 +63,10 @@ fun DashboardScreen(
     onDismissBannerClick: () -> Unit,
     onClearHistoryClick: () -> Unit,
     onOpenNfcSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClearScanArraysClick: () -> Unit = {},
+    onDismissRuneClick: () -> Unit = {},
+    onSimulateRuneClick: (NordicRune) -> Unit = {}
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -107,6 +113,13 @@ fun DashboardScreen(
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        if (uiState.detectedRune != null) {
+                            DetectedRuneCard(
+                                rune = uiState.detectedRune,
+                                onDismissClick = onDismissRuneClick
+                            )
+                        }
+
                         NfcStatusCard(
                             nfcStatus = uiState.nfcStatus,
                             onOpenNfcSettings = onOpenNfcSettings
@@ -148,6 +161,13 @@ fun DashboardScreen(
                             onSimulateScanClick = onSimulateScanClick
                         )
 
+                        ScannedIntegerArraysCard(
+                            currentScanArray = uiState.currentScanArray,
+                            savedScanArrays = uiState.savedScanArrays,
+                            onClearScanArraysClick = onClearScanArraysClick,
+                            onSimulateRuneClick = onSimulateRuneClick
+                        )
+
                         TransmissionHistoryCard(
                             history = uiState.transmissionHistory,
                             onClearHistoryClick = onClearHistoryClick
@@ -162,6 +182,13 @@ fun DashboardScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    if (uiState.detectedRune != null) {
+                        DetectedRuneCard(
+                            rune = uiState.detectedRune,
+                            onDismissClick = onDismissRuneClick
+                        )
+                    }
+
                     NfcStatusCard(
                         nfcStatus = uiState.nfcStatus,
                         onOpenNfcSettings = onOpenNfcSettings
@@ -194,6 +221,13 @@ fun DashboardScreen(
                         isTransmitting = uiState.transmissionState is TransmissionState.Transmitting,
                         onTransmitClick = onTransmitClick,
                         onSimulateScanClick = onSimulateScanClick
+                    )
+
+                    ScannedIntegerArraysCard(
+                        currentScanArray = uiState.currentScanArray,
+                        savedScanArrays = uiState.savedScanArrays,
+                        onClearScanArraysClick = onClearScanArraysClick,
+                        onSimulateRuneClick = onSimulateRuneClick
                     )
 
                     TransmissionHistoryCard(

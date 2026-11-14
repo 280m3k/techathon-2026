@@ -69,7 +69,10 @@ class MainActivity : ComponentActivity() {
                     onClearHistoryClick = viewModel::clearHistory,
                     onOpenNfcSettings = {
                         startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
-                    }
+                    },
+                    onClearScanArraysClick = viewModel::clearScanArrays,
+                    onDismissRuneClick = viewModel::dismissRune,
+                    onSimulateRuneClick = { rune -> viewModel.simulateRuneScan(rune, this) }
                 )
             }
         }
